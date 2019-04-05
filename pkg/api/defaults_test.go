@@ -199,7 +199,7 @@ func TestAssignDefaultAddonImages(t *testing.T) {
 		NVIDIADevicePluginAddonName:        "nvidia/k8s-device-plugin:1.10",
 		ContainerMonitoringAddonName:       "microsoft/oms:ciprod01092019",
 		IPMASQAgentAddonName:               "k8s.gcr.io/ip-masq-agent-amd64:v2.0.0",
-		AzureCNINetworkMonitoringAddonName: "containernetworking/networkmonitor:v0.0.5",
+		AzureCNINetworkMonitoringAddonName: "containernetworking/networkmonitor:v0.0.6",
 		DefaultDNSAutoscalerAddonName:      "k8s.gcr.io/cluster-proportional-autoscaler-amd64:1.1.1",
 		DefaultHeapsterAddonName:           "k8s.gcr.io/heapster-amd64:v1.5.4",
 	}
@@ -1208,139 +1208,6 @@ func TestSetVMSSDefaultsAndZones(t *testing.T) {
 
 }
 
-func TestAKSDockerEngineDistro(t *testing.T) {
-	// N Series agent pools should always get the "aks-docker-engine" distro for default create flows
-	// D Series agent pools should always get the "aks" distro for default create flows
-	mockCS := getMockBaseContainerService("1.10.9")
-	properties := mockCS.Properties
-	properties.OrchestratorProfile.OrchestratorType = Kubernetes
-	properties.MasterProfile.Count = 1
-	properties.AgentPoolProfiles[0].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[1].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[2].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[2].Distro = Ubuntu
-	properties.AgentPoolProfiles[3].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[3].Distro = Ubuntu
-	properties.setAgentProfileDefaults(false, false)
-
-	if properties.AgentPoolProfiles[0].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for N-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[0].Distro)
-	}
-	if properties.AgentPoolProfiles[1].Distro != AKS {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", AKS, properties.AgentPoolProfiles[1].Distro)
-	}
-	if properties.AgentPoolProfiles[2].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", Ubuntu, properties.AgentPoolProfiles[2].Distro)
-	}
-	if properties.AgentPoolProfiles[3].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", Ubuntu, properties.AgentPoolProfiles[3].Distro)
-	}
-
-	// N Series agent pools with small disk size should always get the "ubuntu" distro for default create flows
-	// D Series agent pools with small disk size should always get the "ubuntu" distro for default create flows
-	mockCS = getMockBaseContainerService("1.10.9")
-	properties = mockCS.Properties
-	properties.OrchestratorProfile.OrchestratorType = Kubernetes
-	properties.MasterProfile.Count = 1
-	properties.AgentPoolProfiles[0].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[0].OSDiskSizeGB = VHDDiskSizeAKS - 1
-	properties.AgentPoolProfiles[1].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[1].OSDiskSizeGB = VHDDiskSizeAKS - 1
-	properties.setAgentProfileDefaults(false, false)
-
-	if properties.AgentPoolProfiles[0].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for N-series pool with small disk, got %s instead", Ubuntu, properties.AgentPoolProfiles[0].Distro)
-	}
-	if properties.AgentPoolProfiles[1].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for D-series pool with small disk, got %s instead", Ubuntu, properties.AgentPoolProfiles[1].Distro)
-	}
-
-	// N Series agent pools should always get the "aks-docker-engine" distro for upgrade flows unless Ubuntu
-	// D Series agent pools should always get the distro they requested for upgrade flows
-	mockCS = getMockBaseContainerService("1.10.9")
-	properties = mockCS.Properties
-	properties.OrchestratorProfile.OrchestratorType = Kubernetes
-	properties.MasterProfile.Count = 1
-	properties.AgentPoolProfiles[0].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[0].Distro = AKS
-	properties.AgentPoolProfiles[1].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[1].Distro = AKS
-	properties.AgentPoolProfiles[2].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[2].Distro = AKSDockerEngine
-	properties.AgentPoolProfiles[3].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[3].Distro = Ubuntu
-	properties.setAgentProfileDefaults(true, false)
-
-	if properties.AgentPoolProfiles[0].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for N-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[0].Distro)
-	}
-	if properties.AgentPoolProfiles[1].Distro != AKS {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", AKS, properties.AgentPoolProfiles[1].Distro)
-	}
-	if properties.AgentPoolProfiles[2].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[2].Distro)
-	}
-	if properties.AgentPoolProfiles[3].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", Ubuntu, properties.AgentPoolProfiles[3].Distro)
-	}
-
-	// N Series agent pools should always get the "aks-docker-engine" distro for scale flows unless Ubuntu
-	// D Series agent pools should always get the distro they requested for scale flows
-	mockCS = getMockBaseContainerService("1.10.9")
-	properties = mockCS.Properties
-	properties.OrchestratorProfile.OrchestratorType = Kubernetes
-	properties.MasterProfile.Count = 1
-	properties.AgentPoolProfiles[0].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[0].Distro = AKS
-	properties.AgentPoolProfiles[1].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[1].Distro = AKS
-	properties.AgentPoolProfiles[2].VMSize = "Standard_D2_V2"
-	properties.AgentPoolProfiles[2].Distro = AKSDockerEngine
-	properties.AgentPoolProfiles[3].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[3].Distro = Ubuntu
-	properties.setAgentProfileDefaults(false, true)
-
-	if properties.AgentPoolProfiles[0].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for N-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[0].Distro)
-	}
-	if properties.AgentPoolProfiles[1].Distro != AKS {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", AKS, properties.AgentPoolProfiles[1].Distro)
-	}
-	if properties.AgentPoolProfiles[2].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[2].Distro)
-	}
-	if properties.AgentPoolProfiles[3].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for D-series pool, got %s instead", Ubuntu, properties.AgentPoolProfiles[3].Distro)
-	}
-
-	// N Series Windows agent pools should always get no distro value
-	mockCS = getMockBaseContainerService("1.10.9")
-	properties = mockCS.Properties
-	properties.OrchestratorProfile.OrchestratorType = Kubernetes
-	properties.MasterProfile.Count = 1
-	properties.AgentPoolProfiles[0].VMSize = "Standard_NC6"
-	properties.AgentPoolProfiles[0].OSType = Windows
-	properties.AgentPoolProfiles[1].VMSize = "Standard_NC6"
-	properties.setAgentProfileDefaults(false, false)
-
-	if properties.AgentPoolProfiles[0].Distro != "" {
-		t.Fatalf("Expected no distro value for N-series Windows VM, got %s instead", properties.AgentPoolProfiles[0].Distro)
-	}
-	if properties.AgentPoolProfiles[1].Distro != AKSDockerEngine {
-		t.Fatalf("Expected %s distro for N-series pool, got %s instead", AKSDockerEngine, properties.AgentPoolProfiles[1].Distro)
-	}
-
-	// Non-k8s context
-	mockCS = getMockBaseContainerService("1.10.9")
-	properties = mockCS.Properties
-	properties.MasterProfile.Count = 1
-	properties.setAgentProfileDefaults(false, false)
-
-	if properties.AgentPoolProfiles[0].Distro != Ubuntu {
-		t.Fatalf("Expected %s distro for N-series pool, got %s instead", Ubuntu, properties.AgentPoolProfiles[1].Distro)
-	}
-}
-
 func TestAzureCNIVersionString(t *testing.T) {
 	mockCS := getMockBaseContainerService("1.10.3")
 	properties := mockCS.Properties
@@ -1377,7 +1244,7 @@ func TestAzureCNIVersionString(t *testing.T) {
 	}
 }
 
-func TestDefaultDisableRbac(t *testing.T) {
+func TestEnableAggregatedAPIs(t *testing.T) {
 	mockCS := getMockBaseContainerService("1.10.3")
 	properties := mockCS.Properties
 	properties.OrchestratorProfile.OrchestratorType = Kubernetes
@@ -1386,6 +1253,31 @@ func TestDefaultDisableRbac(t *testing.T) {
 
 	if properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs {
 		t.Fatalf("got unexpected EnableAggregatedAPIs config value for EnableRbac=false: %t",
+			properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs)
+	}
+
+	mockCS = getMockBaseContainerService("1.10.3")
+	properties = mockCS.Properties
+	properties.OrchestratorProfile.OrchestratorType = Kubernetes
+	properties.OrchestratorProfile.KubernetesConfig.EnableRbac = to.BoolPtr(true)
+	mockCS.setOrchestratorDefaults(true)
+
+	if !properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs {
+		t.Fatalf("got unexpected EnableAggregatedAPIs config value for EnableRbac=true: %t",
+			properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs)
+	}
+}
+
+func TestAlwaysSetEnableAggregatedAPIsToFalseIfRBACDisabled(t *testing.T) {
+	mockCS := getMockBaseContainerService("1.10.3")
+	properties := mockCS.Properties
+	properties.OrchestratorProfile.OrchestratorType = Kubernetes
+	properties.OrchestratorProfile.KubernetesConfig.EnableRbac = to.BoolPtr(false)
+	properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs = true
+	mockCS.setOrchestratorDefaults(true)
+
+	if properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs {
+		t.Fatalf("expected EnableAggregatedAPIs to be manually set to false in update scenario, instead got %t",
 			properties.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs)
 	}
 }
@@ -1592,11 +1484,10 @@ func TestSetCustomCloudProfileDefaults(t *testing.T) {
 			ResourceManagerVMDNSSuffix: "",
 		},
 		OSImageConfig: map[Distro]AzureOSImageConfig{
-			Ubuntu:          DefaultUbuntuImageConfig,
-			RHEL:            DefaultRHELOSImageConfig,
-			CoreOS:          DefaultCoreOSImageConfig,
-			AKS:             DefaultAKSOSImageConfig,
-			AKSDockerEngine: DefaultAKSDockerEngineOSImageConfig,
+			Ubuntu: DefaultUbuntuImageConfig,
+			RHEL:   DefaultRHELOSImageConfig,
+			CoreOS: DefaultCoreOSImageConfig,
+			AKS:    DefaultAKSOSImageConfig,
 		},
 	}
 
@@ -1665,8 +1556,7 @@ func TestSetCustomCloudProfileDefaults(t *testing.T) {
 				ImagePublisher: "ImagePublisher",
 				ImageVersion:   "ImageVersion",
 			},
-			AKS:             DefaultAKSOSImageConfig,
-			AKSDockerEngine: DefaultAKSDockerEngineOSImageConfig,
+			AKS: DefaultAKSOSImageConfig,
 		},
 	}
 	mockCSPCustom.CustomCloudProfile.AzureEnvironmentSpecConfig = &customCloudSpec
@@ -1714,8 +1604,7 @@ func TestSetCustomCloudProfileDefaults(t *testing.T) {
 				ImagePublisher: "ImagePublisher",
 				ImageVersion:   "ImageVersion",
 			},
-			AKS:             DefaultAKSOSImageConfig,
-			AKSDockerEngine: DefaultAKSDockerEngineOSImageConfig,
+			AKS: DefaultAKSOSImageConfig,
 		},
 	}
 	mockCSPCustomP.CustomCloudProfile.AzureEnvironmentSpecConfig = &customCloudSpecP

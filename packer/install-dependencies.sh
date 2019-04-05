@@ -47,24 +47,17 @@ cat << EOF >> ${RELEASE_NOTES_FILEPATH}
   - zip
 EOF
 
-if [[ ${FEATURE_FLAGS} == *"docker-engine"* ]]; then
-    DOCKER_ENGINE_REPO="https://apt.dockerproject.org/repo"
-    installDockerEngine
-    overrideDockerEngineStorageDriver
-    echo "  - docker-engine v${DOCKER_ENGINE_VERSION}" >> ${RELEASE_NOTES_FILEPATH}
-    installGPUDrivers
-    echo "  - nvidia-docker2 nvidia-container-runtime" >> ${RELEASE_NOTES_FILEPATH}
-else
-    MOBY_VERSION="3.0.4"
-    installMoby
-    echo "  - moby v${MOBY_VERSION}" >> ${RELEASE_NOTES_FILEPATH}
-fi
+MOBY_VERSION="3.0.4"
+installMoby
+echo "  - moby v${MOBY_VERSION}" >> ${RELEASE_NOTES_FILEPATH}
+installGPUDrivers
+echo "  - nvidia-docker2 nvidia-container-runtime" >> ${RELEASE_NOTES_FILEPATH}
 
 installClearContainersRuntime
 
 VNET_CNI_VERSIONS="
+1.0.18
 1.0.17
-1.0.16
 "
 for VNET_CNI_VERSION in $VNET_CNI_VERSIONS; do
     VNET_CNI_PLUGINS_URL="https://acs-mirror.azureedge.net/cni/azure-vnet-cni-linux-amd64-v${VNET_CNI_VERSION}.tgz"
@@ -251,7 +244,10 @@ for VIRTUAL_KUBELET_VERSION in ${VIRTUAL_KUBELET_VERSIONS}; do
     echo "  - ${CONTAINER_IMAGE}" >> ${RELEASE_NOTES_FILEPATH}
 done
 
-AZURE_CNI_NETWORKMONITOR_VERSIONS="0.0.5"
+AZURE_CNI_NETWORKMONITOR_VERSIONS="
+0.0.6
+0.0.5
+"
 for AZURE_CNI_NETWORKMONITOR_VERSION in ${AZURE_CNI_NETWORKMONITOR_VERSIONS}; do
     CONTAINER_IMAGE="containernetworking/networkmonitor:v${AZURE_CNI_NETWORKMONITOR_VERSION}"
     pullContainerImage "docker" ${CONTAINER_IMAGE}
@@ -305,7 +301,12 @@ done
 
 IP_MASQ_AGENT_VERSIONS="2.0.0"
 for IP_MASQ_AGENT_VERSION in ${IP_MASQ_AGENT_VERSIONS}; do
-    CONTAINER_IMAGE="gcr.io/google-containers/ip-masq-agent-amd64:v${IP_MASQ_AGENT_VERSION}"
+    # TODO remove the gcr.io/google-containers image once AKS switches to use k8s.gcr.io
+    DEPRECATED_CONTAINER_IMAGE="gcr.io/google-containers/ip-masq-agent-amd64:v${IP_MASQ_AGENT_VERSION}"
+    pullContainerImage "docker" ${DEPRECATED_CONTAINER_IMAGE}
+    echo "  - ${DEPRECATED_CONTAINER_IMAGE}" >> ${RELEASE_NOTES_FILEPATH}
+
+    CONTAINER_IMAGE="k8s.gcr.io/ip-masq-agent-amd64:v${IP_MASQ_AGENT_VERSION}"
     pullContainerImage "docker" ${CONTAINER_IMAGE}
     echo "  - ${CONTAINER_IMAGE}" >> ${RELEASE_NOTES_FILEPATH}
 done

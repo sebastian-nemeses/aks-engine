@@ -125,7 +125,7 @@ func TestCreateAgentVMASAKSBillingExtension(t *testing.T) {
 				TypeHandlerVersion:      to.StringPtr("1.0"),
 				AutoUpgradeMinorVersion: to.BoolPtr(true),
 				Settings:                &map[string]interface{}{},
-				Type:                    to.StringPtr("Compute.AKS-Engine.Windows.Billing"),
+				Type:                    to.StringPtr("Compute.AKS.Windows.Billing"),
 			},
 			Type: to.StringPtr("Microsoft.Compute/virtualMachines/extensions"),
 		},
@@ -358,7 +358,7 @@ func TestCreateAgentVMASCustomScriptExtension(t *testing.T) {
 	expectedCSE.VirtualMachineExtensionProperties.Type = to.StringPtr("CustomScriptExtension")
 	expectedCSE.TypeHandlerVersion = to.StringPtr("1.8")
 	expectedCSE.ProtectedSettings = &map[string]interface{}{
-		"commandToExecute": "[concat('powershell.exe -ExecutionPolicy Unrestricted -command \"', '$arguments = ', variables('singleQuote'),'-MasterIP ',variables('kubernetesAPIServerIP'),' -KubeDnsServiceIp ',parameters('kubeDnsServiceIp'),' -MasterFQDNPrefix ',variables('masterFqdnPrefix'),' -Location ',variables('location'),' -AgentKey ',parameters('clientPrivateKey'),' -AADClientId ',variables('servicePrincipalClientId'),' -AADClientSecret ',variables('servicePrincipalClientSecret'),variables('singleQuote'), ' ; ', variables('windowsCustomScriptSuffix'), '\" > %SYSTEMDRIVE%\\AzureData\\CustomDataSetupScript.log 2>&1')]",
+		"commandToExecute": "[concat('powershell.exe -ExecutionPolicy Unrestricted -command \"', '$arguments = ', variables('singleQuote'),'-MasterIP ',variables('kubernetesAPIServerIP'),' -KubeDnsServiceIp ',parameters('kubeDnsServiceIp'),' -MasterFQDNPrefix ',variables('masterFqdnPrefix'),' -Location ',variables('location'),' -AgentKey ',parameters('clientPrivateKey'),' -AADClientId ',variables('servicePrincipalClientId'),' -AADClientSecret ',variables('singleQuote'),variables('singleQuote'),variables('servicePrincipalClientSecret'),variables('singleQuote'),variables('singleQuote'), ' ',variables('singleQuote'), ' ; ', variables('windowsCustomScriptSuffix'), '\" > %SYSTEMDRIVE%\\AzureData\\CustomDataSetupScript.log 2>&1')]",
 	}
 
 	diff = cmp.Diff(cse, expectedCSE)

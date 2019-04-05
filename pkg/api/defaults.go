@@ -217,6 +217,10 @@ func (cs *ContainerService) setOrchestratorDefaults(isUpdate bool) {
 				// TODO make EnableAggregatedAPIs a pointer to bool so that a user can opt out of it
 				a.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs = true
 			}
+		} else if isUpdate && a.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs {
+			// Upgrade scenario:
+			// We need to force set EnableAggregatedAPIs to false if RBAC was previously disabled
+			a.OrchestratorProfile.KubernetesConfig.EnableAggregatedAPIs = false
 		}
 
 		if a.OrchestratorProfile.KubernetesConfig.EnableSecureKubelet == nil {
@@ -460,22 +464,17 @@ func (p *Properties) setAgentProfileDefaults(isUpgrade, isScale bool) {
 					if profile.OSDiskSizeGB != 0 && profile.OSDiskSizeGB < VHDDiskSizeAKS {
 						profile.Distro = Ubuntu
 					} else {
-						if profile.IsNSeriesSKU() {
-							profile.Distro = AKSDockerEngine
-						} else {
-							profile.Distro = AKS
-						}
+						profile.Distro = AKS
 					}
 				} else {
 					profile.Distro = Ubuntu
 				}
 				// Ensure distro is set properly for N Series SKUs, because
-				// (1) At present, "aks-docker-engine" and "ubuntu" are the only working distro base for running GPU workloads on N Series SKUs
-				// (2) Previous versions of aks-engine had working implementations using the "aks" distro value,
-				//     so we need to hard override it in order to produce a working cluster in upgrade/scale contexts
-			} else if p.OrchestratorProfile.IsKubernetes() && (isUpgrade || isScale) && profile.IsNSeriesSKU() {
-				if profile.Distro == AKS {
-					profile.Distro = AKSDockerEngine
+				// Previous versions of aks-engine required the docker-engine distro for N series vms,
+				// so we need to hard override it in order to produce a working cluster in upgrade/scale contexts
+			} else if p.OrchestratorProfile.IsKubernetes() && (isUpgrade || isScale) {
+				if profile.Distro == AKSDockerEngine {
+					profile.Distro = AKS
 				}
 			}
 		}
