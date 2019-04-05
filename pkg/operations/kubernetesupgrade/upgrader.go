@@ -508,7 +508,7 @@ func (ku *Upgrader) upgradeAgentScaleSets(ctx context.Context) error {
 				client,
 				ku.logger,
 				vmToUpgrade.Name,
-				time.Minute,
+				time.Duration(60)*time.Minute,
 			)
 			if err != nil {
 				ku.logger.Errorf("Error draining VM in VMSS: %v", err)

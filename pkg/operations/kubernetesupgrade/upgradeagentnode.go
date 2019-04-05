@@ -59,7 +59,7 @@ func (kan *UpgradeAgentNode) DeleteNode(vmName *string, drain bool) error {
 	}
 	// Cordon and drain the node
 	if drain {
-		err = operations.SafelyDrainNodeWithClient(client, kan.logger, *vmName, time.Minute)
+		err = operations.SafelyDrainNodeWithClient(client, kan.logger, *vmName, time.Duration(60)*time.Minute)
 		if err != nil {
 			kan.logger.Warningf("Error draining agent VM %s. Proceeding with deletion. Error: %v", *vmName, err)
 			// Proceed with deletion anyways
