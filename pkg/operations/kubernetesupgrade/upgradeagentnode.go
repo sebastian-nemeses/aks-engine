@@ -21,7 +21,7 @@ import (
 const (
 	interval           = time.Second * 1
 	retry              = time.Second * 5
-	cordonDrainTimeout = time.Minute * 20
+	cordonDrainTimeout = time.Minute * 60
 )
 
 // Compiler to verify QueueMessageProcessor implements OperationsProcessor

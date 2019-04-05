@@ -38,7 +38,7 @@ type Upgrader struct {
 type vmStatus int
 
 const (
-	defaultTimeout                     = time.Minute * 20
+	defaultTimeout                     = time.Minute * 60
 	nodePropertiesCopyTimeout          = time.Minute * 5
 	vmStatusUpgraded          vmStatus = iota
 	vmStatusNotUpgraded
