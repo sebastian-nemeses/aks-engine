@@ -1,4 +1,8 @@
 #!/bin/bash
+#
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT license.
+
 if [ -z "$CLIENT_ID" ]; then
     echo "must provide a CLIENT_ID env var"
     exit 1;
@@ -25,7 +29,7 @@ az login --service-principal \
 		--tenant "${TENANT_ID}" &>/dev/null
 
 # set to the sub id we want to cleanup
-az account set -s $SUBSCRIPTION_ID
+az account set -s "$SUBSCRIPTION_ID"
 
 python pkg/helpers/generate_azure_constants.py
 git status | grep pkg/helpers/azureconst.go

@@ -61,20 +61,20 @@ func kubernetesContainerAddonSettingsInit(profile *api.Properties) map[string]ku
 		DefaultBlobfuseFlexVolumeAddonName: {
 			"kubernetesmasteraddons-blobfuse-flexvolume-installer.yaml",
 			"blobfuse-flexvolume-installer.yaml",
-			profile.OrchestratorProfile.KubernetesConfig.IsBlobfuseFlexVolumeEnabled(),
+			profile.OrchestratorProfile.KubernetesConfig.IsBlobfuseFlexVolumeEnabled() && !profile.HasCoreOS(),
 			profile.OrchestratorProfile.KubernetesConfig.GetAddonScript(DefaultBlobfuseFlexVolumeAddonName),
 		},
 
 		DefaultSMBFlexVolumeAddonName: {
 			"kubernetesmasteraddons-smb-flexvolume-installer.yaml",
 			"smb-flexvolume-installer.yaml",
-			profile.OrchestratorProfile.KubernetesConfig.IsSMBFlexVolumeEnabled(),
+			profile.OrchestratorProfile.KubernetesConfig.IsSMBFlexVolumeEnabled() && !profile.HasCoreOS(),
 			profile.OrchestratorProfile.KubernetesConfig.GetAddonScript(DefaultSMBFlexVolumeAddonName),
 		},
 		DefaultKeyVaultFlexVolumeAddonName: {
 			"kubernetesmasteraddons-keyvault-flexvolume-installer.yaml",
 			"keyvault-flexvolume-installer.yaml",
-			profile.OrchestratorProfile.KubernetesConfig.IsKeyVaultFlexVolumeEnabled(),
+			profile.OrchestratorProfile.KubernetesConfig.IsKeyVaultFlexVolumeEnabled() && !profile.HasCoreOS(),
 			profile.OrchestratorProfile.KubernetesConfig.GetAddonScript(DefaultKeyVaultFlexVolumeAddonName),
 		},
 		DefaultDashboardAddonName: {
@@ -262,36 +262,8 @@ func kubernetesManifestSettingsInit(profile *api.Properties) []kubernetesFeature
 	}
 }
 
-func kubernetesArtifactSettingsInitMaster(profile *api.Properties) []kubernetesFeatureSetting {
-	return []kubernetesFeatureSetting{
-		{
-			"kuberneteskubelet.service",
-			"kubelet.service",
-			true,
-			"",
-		},
-		{
-			"kubernetesazurekms.service",
-			"kms.service",
-			true,
-			"",
-		},
-	}
-}
-
-func kubernetesArtifactSettingsInitAgent(profile *api.Properties) []kubernetesFeatureSetting {
-	return []kubernetesFeatureSetting{
-		{
-			"kuberneteskubelet.service",
-			"kubelet.service",
-			true,
-			"",
-		},
-	}
-}
-
 func getAddonString(input, destinationPath, destinationFile string) string {
-	addonString := getBase64CustomScriptFromStr(input)
+	addonString := getBase64EncodedGzippedCustomScriptFromStr(input)
 	return buildConfigString(addonString, destinationFile, destinationPath)
 }
 
@@ -339,7 +311,7 @@ func buildConfigString(configString, destinationFile, destinationPath string) st
 
 func getCustomScriptFromFile(sourceFile, sourcePath, version string) string {
 	customDataFilePath := getCustomDataFilePath(sourceFile, sourcePath, version)
-	return getBase64CustomScript(customDataFilePath)
+	return getBase64EncodedGzippedCustomScript(customDataFilePath)
 }
 
 func getCustomDataFilePath(sourceFile, sourcePath, version string) string {

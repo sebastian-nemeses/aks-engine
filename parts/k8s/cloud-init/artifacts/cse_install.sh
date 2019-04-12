@@ -9,7 +9,11 @@ CONTAINERD_DOWNLOADS_DIR="/opt/containerd/downloads"
 UBUNTU_RELEASE=$(lsb_release -r -s)
 
 removeEtcd() {
-    rm -rf /usr/bin/etcd
+    if [[ $OS == $COREOS_OS_NAME ]]; then
+        rm -rf /opt/bin/etcd
+    else
+        rm -rf /usr/bin/etcd
+    fi
 }
 
 removeMoby() {
@@ -23,7 +27,11 @@ installEtcd() {
     else
         retrycmd_get_tarball 120 5 /tmp/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz ${ETCD_DOWNLOAD_URL}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz || exit $ERR_ETCD_DOWNLOAD_TIMEOUT
         removeEtcd
-        tar -xzvf /tmp/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz -C /usr/bin/ --strip-components=1 || exit $ERR_ETCD_DOWNLOAD_TIMEOUT
+        if [[ $OS == $COREOS_OS_NAME ]]; then
+            tar -xzvf /tmp/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz -C /opt/bin/ --strip-components=1 || exit $ERR_ETCD_DOWNLOAD_TIMEOUT
+        else
+            tar -xzvf /tmp/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz -C /usr/bin/ --strip-components=1 || exit $ERR_ETCD_DOWNLOAD_TIMEOUT
+        fi
     fi
 }
 
@@ -31,6 +39,7 @@ installDeps() {
     retrycmd_if_failure_no_stats 120 5 25 curl -fsSL https://packages.microsoft.com/config/ubuntu/${UBUNTU_RELEASE}/packages-microsoft-prod.deb > /tmp/packages-microsoft-prod.deb || exit $ERR_MS_PROD_DEB_DOWNLOAD_TIMEOUT
     retrycmd_if_failure 60 5 10 dpkg -i /tmp/packages-microsoft-prod.deb || exit $ERR_MS_PROD_DEB_PKG_ADD_FAIL
     apt_get_update || exit $ERR_APT_UPDATE_TIMEOUT
+    apt_get_dist_upgrade || exit $ERR_APT_DIST_UPGRADE_TIMEOUT
     apt_get_install 30 1 600 apt-transport-https blobfuse ca-certificates ceph-common cgroup-lite cifs-utils conntrack ebtables ethtool fuse git glusterfs-client init-system-helpers iproute2 ipset iptables jq mount nfs-common pigz socat util-linux xz-utils zip htop iotop iftop sysstat || exit $ERR_APT_INSTALL_TIMEOUT
 }
 

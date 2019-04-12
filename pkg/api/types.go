@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"log"
 	"math/rand"
 	"net"
 	neturl "net/url"
@@ -708,12 +707,41 @@ type V20180331ARMManagedContainerService struct {
 	*v20180331.ManagedCluster
 }
 
+// AzureStackMetadataEndpoints is the type for Azure Stack metadata endpoints
+type AzureStackMetadataEndpoints struct {
+	GalleryEndpoint string                            `json:"galleryEndpoint,omitempty"`
+	GraphEndpoint   string                            `json:"graphEndpoint,omitempty"`
+	PortalEndpoint  string                            `json:"portalEndpoint,omitempty"`
+	Authentication  *AzureStackMetadataAuthentication `json:"authentication,omitempty"`
+}
+
+// AzureStackMetadataAuthentication is the type for Azure Stack metadata authentication endpoints
+type AzureStackMetadataAuthentication struct {
+	LoginEndpoint string   `json:"loginEndpoint,omitempty"`
+	Audiences     []string `json:"audiences,omitempty"`
+}
+
+// DependenciesLocation represents location to retrieve the dependencies.
+type DependenciesLocation string
+
 // CustomCloudProfile represents the custom cloud profile
 type CustomCloudProfile struct {
 	Environment                *azure.Environment          `json:"environment,omitempty"`
 	AzureEnvironmentSpecConfig *AzureEnvironmentSpecConfig `json:"azureEnvironmentSpecConfig,omitempty"`
 	IdentitySystem             string                      `json:"identitySystem,omitempty"`
 	AuthenticationMethod       string                      `json:"authenticationMethod,omitempty"`
+	DependenciesLocation       DependenciesLocation        `json:"dependenciesLocation,omitempty"`
+	PortalURL                  string                      `json:"portalURL,omitempty"`
+}
+
+// HasCoreOS returns true if the cluster contains coreos nodes
+func (p *Properties) HasCoreOS() bool {
+	for _, agentPoolProfile := range p.AgentPoolProfiles {
+		if agentPoolProfile.Distro == CoreOS {
+			return true
+		}
+	}
+	return false
 }
 
 // HasWindows returns true if the cluster contains windows
@@ -997,6 +1025,18 @@ func (p *Properties) HasZonesForAllAgentPools() bool {
 	return false
 }
 
+// IsUbuntuDistroForAllNodes returns true if all of the agent pools plus masters are running the base Ubuntu image
+func (p *Properties) IsUbuntuDistroForAllNodes() bool {
+	if len(p.AgentPoolProfiles) > 0 {
+		for _, ap := range p.AgentPoolProfiles {
+			if ap.Distro != Ubuntu && ap.Distro != Ubuntu1804 {
+				return false
+			}
+		}
+	}
+	return p.MasterProfile.Distro == Ubuntu || p.MasterProfile.Distro == Ubuntu1804
+}
+
 // HasAvailabilityZones returns true if the cluster contains a profile with zones
 func (p *Properties) HasAvailabilityZones() bool {
 	hasZones := p.MasterProfile != nil && p.MasterProfile.HasAvailabilityZones()
@@ -1130,6 +1170,11 @@ func (m *MasterProfile) IsUbuntu1804() bool {
 	}
 }
 
+// IsUbuntu returns true if the master profile distro is any ubuntu distro
+func (m *MasterProfile) IsUbuntu() bool {
+	return m.IsUbuntu1604() || m.IsUbuntu1804()
+}
+
 // IsCustomVNET returns true if the customer brought their own VNET
 func (a *AgentPoolProfile) IsCustomVNET() bool {
 	return len(a.VnetSubnetID) > 0
@@ -1214,6 +1259,11 @@ func (a *AgentPoolProfile) IsUbuntu1804() bool {
 		}
 	}
 	return false
+}
+
+// IsUbuntu returns true if the master profile distro is any ubuntu distro
+func (a *AgentPoolProfile) IsUbuntu() bool {
+	return a.IsUbuntu1604() || a.IsUbuntu1804()
 }
 
 // HasSecrets returns true if the customer specified secrets to install
@@ -1309,6 +1359,14 @@ func (o *OrchestratorProfile) RequireRouteTable() bool {
 	default:
 		return false
 	}
+}
+
+// IsPrivateCluster returns true if this deployment is a private cluster
+func (o *OrchestratorProfile) IsPrivateCluster() bool {
+	if !o.IsKubernetes() {
+		return false
+	}
+	return o.KubernetesConfig != nil && o.KubernetesConfig.PrivateCluster != nil && to.Bool(o.KubernetesConfig.PrivateCluster.Enabled)
 }
 
 // NeedsExecHealthz returns whether or not we have a configuration that requires exechealthz pod anywhere
@@ -1477,29 +1535,23 @@ func (p *Properties) IsNVIDIADevicePluginEnabled() bool {
 
 // IsAzureStackCloud return true if the cloud is AzureStack
 func (p *Properties) IsAzureStackCloud() bool {
-	var cloudProfileName string
-	if p.CustomCloudProfile != nil {
-		if p.CustomCloudProfile.Environment != nil {
-			cloudProfileName = p.CustomCloudProfile.Environment.Name
-		}
-	}
-	return strings.EqualFold(cloudProfileName, AzureStackCloud)
+	return p.CustomCloudProfile != nil
 }
 
 // GetCustomEnvironmentJSON return the JSON format string for custom environment
-func (p *Properties) GetCustomEnvironmentJSON(escape bool) string {
+func (p *Properties) GetCustomEnvironmentJSON(escape bool) (string, error) {
 	var environmentJSON string
 	if p.IsAzureStackCloud() {
 		bytes, err := json.Marshal(p.CustomCloudProfile.Environment)
 		if err != nil {
-			log.Fatalf("Could not serialize Environment object - %s", err.Error())
+			return "", fmt.Errorf("Could not serialize Environment object - %s", err.Error())
 		}
 		environmentJSON = string(bytes)
 		if escape {
 			environmentJSON = strings.Replace(environmentJSON, "\"", "\\\"", -1)
 		}
 	}
-	return environmentJSON
+	return environmentJSON, nil
 }
 
 // GetCustomCloudName returns name of environment if customCloudProfile is provided, returns empty string if customCloudProfile is empty.

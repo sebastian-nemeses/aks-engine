@@ -25,6 +25,10 @@ config_script=/opt/azure/containers/provision_configs.sh
 wait_for_file 3600 1 $config_script || exit $ERR_FILE_WATCH_TIMEOUT
 source $config_script
 
+cis_script=/opt/azure/containers/provision_cis.sh
+wait_for_file 3600 1 $cis_script || exit $ERR_FILE_WATCH_TIMEOUT
+source $cis_script
+
 if [[ "${TARGET_ENVIRONMENT,,}" == "${AZURE_STACK_ENV}"  ]]; then 
     config_script_custom_cloud=/opt/azure/containers/provision_configs_custom_cloud.sh
     wait_for_file 3600 1 $config_script_custom_cloud || exit $ERR_FILE_WATCH_TIMEOUT
@@ -59,17 +63,19 @@ else
     FULL_INSTALL_REQUIRED=true
 fi
 
-if [[ ! -z "${MASTER_NODE}" ]] && [[ -z "${COSMOS_URI}" ]]; then
-    	installEtcd
-fi
-
-if $FULL_INSTALL_REQUIRED; then
+if [[ $OS != $COREOS_OS_NAME ]] && [[ $FULL_INSTALL_REQUIRED ]]; then
     installDeps
 else 
     echo "Golden image; skipping dependencies installation"
 fi
 
-installContainerRuntime
+if [[ ! -z "${MASTER_NODE}" ]] && [[ -z "${COSMOS_URI}" ]]; then
+    installEtcd
+fi
+
+if [[ $OS != $COREOS_OS_NAME ]]; then
+    installContainerRuntime
+fi
 installNetworkPlugin
 if [[ "$CONTAINER_RUNTIME" == "clear-containers" ]] || [[ "$CONTAINER_RUNTIME" == "kata-containers" ]] || [[ "$CONTAINER_RUNTIME" == "containerd" ]]; then
     installContainerd
@@ -83,12 +89,12 @@ else
     cleanUpGPUDrivers
 fi
 installKubeletAndKubectl
-ensureRPC
+if [[ $OS != $COREOS_OS_NAME ]]; then
+    ensureRPC
+fi
 createKubeManifestDir
 if [[ "${SGX_NODE}" = true ]]; then
-    if $FULL_INSTALL_REQUIRED; then
-        installSGXDrivers
-    fi
+    installSGXDrivers
 fi
 
 # create etcd user if we are configured for etcd
@@ -171,8 +177,10 @@ echo `date`,`hostname`, endcustomscript>>/opt/m
 mkdir -p /opt/azure/containers && touch /opt/azure/containers/provision.complete
 ps auxfww > /opt/azure/provision-ps.log &
 
-if ! $FULL_INSTALL_REQUIRED; then
-    cleanUpContainerImages
+if $FULL_INSTALL_REQUIRED; then
+  applyCIS || exit $ERR_CIS_HARDENING_ERROR
+else
+  cleanUpContainerImages
 fi
 
 if $REBOOTREQUIRED; then

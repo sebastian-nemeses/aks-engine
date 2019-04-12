@@ -172,10 +172,12 @@ func (t *TemplateGenerator) GetJumpboxCustomDataJSON(cs *api.ContainerService) s
 	return fmt.Sprintf("{\"customData\": \"[base64(concat('%s'))]\"}", str)
 }
 
-func (t *TemplateGenerator) GetMasterCustomDataJSON(cs *api.ContainerService) string {
+// GetMasterCustomDataJSONObject returns master customData JSON object in the form
+// { "customData": "[base64(concat(<customData string>))]" }
+func (t *TemplateGenerator) GetMasterCustomDataJSONObject(cs *api.ContainerService) string {
 	profile := cs.Properties
 
-	str, e := t.getSingleLineForTemplate(kubernetesMasterCustomDataYaml, cs, profile)
+	str, e := t.getSingleLineForTemplate(kubernetesMasterNodeCustomDataYaml, cs, profile)
 	if e != nil {
 		panic(e)
 	}
@@ -185,14 +187,6 @@ func (t *TemplateGenerator) GetMasterCustomDataJSON(cs *api.ContainerService) st
 		"k8s/manifests",
 		"/etc/kubernetes/manifests",
 		"MASTER_MANIFESTS_CONFIG_PLACEHOLDER",
-		profile.OrchestratorProfile.OrchestratorVersion)
-
-	// add artifacts
-	str = substituteConfigString(str,
-		kubernetesArtifactSettingsInitMaster(profile),
-		"k8s/artifacts",
-		"/etc/systemd/system",
-		"MASTER_ARTIFACTS_CONFIG_PLACEHOLDER",
 		profile.OrchestratorProfile.OrchestratorVersion)
 
 	// add addons
@@ -220,25 +214,21 @@ func (t *TemplateGenerator) GetMasterCustomDataJSON(cs *api.ContainerService) st
 	return fmt.Sprintf("{\"customData\": \"[base64(concat('%s'))]\"}", str)
 }
 
-func (t *TemplateGenerator) GetKubernetesAgentCustomDataJSON(cs *api.ContainerService, profile *api.AgentPoolProfile) string {
-	str, e := t.getSingleLineForTemplate(kubernetesAgentCustomDataYaml, cs, profile)
+// GetKubernetesLinuxNodeCustomDataJSONObject returns Linux customData JSON object in the form
+// { "customData": "[base64(concat(<customData string>))]" }
+func (t *TemplateGenerator) GetKubernetesLinuxNodeCustomDataJSONObject(cs *api.ContainerService, profile *api.AgentPoolProfile) string {
+	str, e := t.getSingleLineForTemplate(kubernetesNodeCustomDataYaml, cs, profile)
 
 	if e != nil {
 		panic(e)
 	}
 
-	// add artifacts
-	str = substituteConfigString(str,
-		kubernetesArtifactSettingsInitAgent(cs.Properties),
-		"k8s/artifacts",
-		"/etc/systemd/system",
-		"AGENT_ARTIFACTS_CONFIG_PLACEHOLDER",
-		cs.Properties.OrchestratorProfile.OrchestratorVersion)
-
 	return fmt.Sprintf("{\"customData\": \"[base64(concat('%s'))]\"}", str)
 }
 
-func (t *TemplateGenerator) GetKubernetesWindowsAgentCustomDataJSON(cs *api.ContainerService, profile *api.AgentPoolProfile) string {
+// GetKubernetesWindowsNodeCustomDataJSONObject returns Windows customData JSON object in the form
+// { "customData": "[base64(concat(<customData string>))]" }
+func (t *TemplateGenerator) GetKubernetesWindowsNodeCustomDataJSONObject(cs *api.ContainerService, profile *api.AgentPoolProfile) string {
 	str, e := t.getSingleLineForTemplate(kubernetesWindowsAgentCustomDataPS1, cs, profile)
 
 	if e != nil {
@@ -256,60 +246,13 @@ func (t *TemplateGenerator) GetKubernetesWindowsAgentCustomDataJSON(cs *api.Cont
 	return fmt.Sprintf("{\"customData\": \"[base64(concat('%s'))]\"}", str)
 }
 
-func (t *TemplateGenerator) getMasterCustomData(cs *api.ContainerService, textFilename string, profile *api.Properties) string {
-	str, e := t.getSingleLineForTemplate(textFilename, cs, profile)
-	if e != nil {
-		panic(e)
-	}
-
-	// add manifests
-	str = substituteConfigString(str,
-		kubernetesManifestSettingsInit(profile),
-		"k8s/manifests",
-		"/etc/kubernetes/manifests",
-		"MASTER_MANIFESTS_CONFIG_PLACEHOLDER",
-		profile.OrchestratorProfile.OrchestratorVersion)
-
-	// add artifacts
-	str = substituteConfigString(str,
-		kubernetesArtifactSettingsInitMaster(profile),
-		"k8s/artifacts",
-		"/etc/systemd/system",
-		"MASTER_ARTIFACTS_CONFIG_PLACEHOLDER",
-		profile.OrchestratorProfile.OrchestratorVersion)
-
-	// add addons
-	str = substituteConfigString(str,
-		kubernetesAddonSettingsInit(profile),
-		"k8s/addons",
-		"/etc/kubernetes/addons",
-		"MASTER_ADDONS_CONFIG_PLACEHOLDER",
-		profile.OrchestratorProfile.OrchestratorVersion)
-
-	// add custom files
-	customFilesReader, err := customfilesIntoReaders(masterCustomFiles(profile))
-	if err != nil {
-		log.Fatalf("Could not read custom files: %s", err.Error())
-	}
-	str = substituteConfigStringCustomFiles(str,
-		customFilesReader,
-		"MASTER_CUSTOM_FILES_PLACEHOLDER")
-
-	addonStr := getContainerAddonsString(cs.Properties, "k8s/containeraddons")
-
-	str = strings.Replace(str, "MASTER_CONTAINER_ADDONS_PLACEHOLDER", addonStr, -1)
-
-	// return the custom data
-	return fmt.Sprintf("\"customData\": \"[base64(concat('%s'))]\",", str)
-}
-
 // getTemplateFuncMap returns all functions used in template generation
 func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) template.FuncMap {
 	return template.FuncMap{
 		"IsAzureStackCloud": func() bool {
 			return cs.Properties.IsAzureStackCloud()
 		},
-		"GetCustomEnvironmentJSON": func() string {
+		"GetCustomEnvironmentJSON": func() (string, error) {
 			return cs.Properties.GetCustomEnvironmentJSON(true)
 		},
 		"GetCustomCloudAuthenticationMethod": func() string {
@@ -460,10 +403,7 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 			return cs.Properties.OrchestratorProfile.RequireRouteTable()
 		},
 		"IsPrivateCluster": func() bool {
-			if !cs.Properties.OrchestratorProfile.IsKubernetes() {
-				return false
-			}
-			return to.Bool(cs.Properties.OrchestratorProfile.KubernetesConfig.PrivateCluster.Enabled)
+			return cs.Properties.OrchestratorProfile.IsPrivateCluster()
 		},
 		"ProvisionJumpbox": func() bool {
 			return cs.Properties.OrchestratorProfile.KubernetesConfig.PrivateJumpboxProvision()
@@ -639,7 +579,7 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 			csStr := string(b)
 			csStr = strings.Replace(csStr, "PREPROVISION_EXTENSION", agentPreprovisionExtension, -1)
 			csStr = strings.Replace(csStr, "\r\n", "\n", -1)
-			str := getBase64CustomScriptFromStr(csStr)
+			str := getBase64EncodedGzippedCustomScriptFromStr(csStr)
 			return fmt.Sprintf("\"customData\": \"%s\"", str)
 		},
 		"GetDCOSWindowsAgentCustomNodeAttributes": func(profile *api.AgentPoolProfile) string {
@@ -679,72 +619,9 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 		"GetDefaultInternalLbStaticIPOffset": func() int {
 			return DefaultInternalLbStaticIPOffset
 		},
-		"GetKubernetesMasterCustomData": func(profile *api.Properties) string {
-			str := t.getMasterCustomData(cs, kubernetesMasterCustomDataYaml, profile)
-			return str
-		},
-		"GetKubernetesAgentCustomData": func(profile *api.AgentPoolProfile) string {
-			str, e := t.getSingleLineForTemplate(kubernetesAgentCustomDataYaml, cs, profile)
-
-			if e != nil {
-				panic(e)
-			}
-
-			// add artifacts
-			str = substituteConfigString(str,
-				kubernetesArtifactSettingsInitAgent(cs.Properties),
-				"k8s/artifacts",
-				"/etc/systemd/system",
-				"AGENT_ARTIFACTS_CONFIG_PLACEHOLDER",
-				cs.Properties.OrchestratorProfile.OrchestratorVersion)
-
-			return fmt.Sprintf("\"customData\": \"[base64(concat('%s'))]\",", str)
-		},
-		"GetKubernetesJumpboxCustomData": func(p *api.Properties) string {
-			str, err := t.getSingleLineForTemplate(kubernetesJumpboxCustomDataYaml, cs, p)
-
-			if err != nil {
-				panic(err)
-			}
-
-			return fmt.Sprintf("\"customData\": \"[base64(concat('%s'))]\",", str)
-		},
 		"WriteLinkedTemplatesForExtensions": func() string {
 			extensions := getLinkedTemplatesForExtensions(cs.Properties)
 			return extensions
-		},
-		"GetKubernetesB64Provision": func() string {
-			return getBase64CustomScript(kubernetesCustomScript)
-		},
-		"GetKubernetesB64ProvisionSource": func() string {
-			return getBase64CustomScript(kubernetesProvisionSourceScript)
-		},
-		"GetKubernetesB64HealthMonitorScript": func() string {
-			return getBase64CustomScript(kubernetesHealthMonitorScript)
-		},
-		"GetKubernetesB64Installs": func() string {
-			return getBase64CustomScript(kubernetesInstalls)
-		},
-		"GetKubernetesB64Configs": func() string {
-			return getBase64CustomScript(kubernetesConfigurations)
-		},
-		"GetKubernetesB64ConfigsCustomCloud": func() string {
-			return getBase64CustomScript(kubernetesConfigurationsCustomCloud)
-		},
-		"GetKubernetesB64Mountetcd": func() string {
-			return getBase64CustomScript(kubernetesMountetcd)
-		},
-		"GetKubernetesB64CustomSearchDomainsScript": func() string {
-			return getBase64CustomScript(kubernetesCustomSearchDomainsScript)
-		},
-		"GetKubernetesB64GenerateProxyCerts": func() string {
-			return getBase64CustomScript(kubernetesMasterGenerateProxyCertsScript)
-		},
-		"GetB64sshdConfig": func() string {
-			return getBase64CustomScript(sshdConfig)
-		},
-		"GetB64systemConf": func() string {
-			return getBase64CustomScript(systemConf)
 		},
 		"HasMultipleSshKeys": func() bool {
 			return len(cs.Properties.LinuxProfile.SSH.PublicKeys) > 1
@@ -838,11 +715,11 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 			return cs.Location
 		},
 		"GetWinAgentSwarmCustomData": func() string {
-			str := getBase64CustomScript(swarmWindowsProvision)
+			str := getBase64EncodedGzippedCustomScript(swarmWindowsProvision)
 			return fmt.Sprintf("\"customData\": \"%s\"", str)
 		},
 		"GetWinAgentSwarmModeCustomData": func() string {
-			str := getBase64CustomScript(swarmModeWindowsProvision)
+			str := getBase64EncodedGzippedCustomScript(swarmModeWindowsProvision)
 			return fmt.Sprintf("\"customData\": \"%s\"", str)
 		},
 		"GetKubernetesWindowsAgentFunctions": func() string {
@@ -921,11 +798,11 @@ func (t *TemplateGenerator) getTemplateFuncMap(cs *api.ContainerService) templat
 		"WrapAsVariable": func(s string) string {
 			return fmt.Sprintf("',variables('%s'),'", s)
 		},
+		"CloudInitData": func(s string) string {
+			return wrapAsVariableObject("cloudInitFiles", s)
+		},
 		"WrapAsParameter": func(s string) string {
 			return fmt.Sprintf("',parameters('%s'),'", s)
-		},
-		"WrapAsParameterObject": func(o, p string) string {
-			return fmt.Sprintf("',parameters('%s').%s,'", o, p)
 		},
 		"WrapAsVerbatim": func(s string) string {
 			return fmt.Sprintf("',%s,'", s)
@@ -1141,7 +1018,10 @@ func (t *TemplateGenerator) GenerateTemplateV2(containerService *api.ContainerSe
 
 	armParams, _ := t.getParameterDescMap(containerService)
 	armResources := GenerateARMResources(containerService)
-	armVariables := GetKubernetesVariables(containerService)
+	armVariables, err := GetKubernetesVariables(containerService)
+	if err != nil {
+		return "", "", err
+	}
 	armOutputs := GetKubernetesOutputs(containerService)
 
 	armTemplate := ARMTemplate{

@@ -14,7 +14,7 @@ import (
 	"github.com/Azure/go-autorest/autorest/to"
 )
 
-func GetKubernetesVariables(cs *api.ContainerService) map[string]interface{} {
+func GetKubernetesVariables(cs *api.ContainerService) (map[string]interface{}, error) {
 	k8sVars := map[string]interface{}{}
 	profiles := cs.Properties.AgentPoolProfiles
 	for i := 0; i < len(profiles); i++ {
@@ -34,16 +34,19 @@ func GetKubernetesVariables(cs *api.ContainerService) map[string]interface{} {
 		}
 	}
 
-	masterVars := getK8sMasterVars(cs)
+	masterVars, err := getK8sMasterVars(cs)
+	if err != nil {
+		return k8sVars, err
+	}
 
 	for k, v := range masterVars {
 		k8sVars[k] = v
 	}
 
-	return k8sVars
+	return k8sVars, nil
 }
 
-func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
+func getK8sMasterVars(cs *api.ContainerService) (map[string]interface{}, error) {
 
 	orchProfile := cs.Properties.OrchestratorProfile
 	kubernetesConfig := orchProfile.KubernetesConfig
@@ -51,7 +54,7 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 	profiles := cs.Properties.AgentPoolProfiles
 
 	var useManagedIdentity, userAssignedID, userAssignedClientID, enableEncryptionWithExternalKms bool
-	var excludeMasterFromStandardLB, provisionJumpbox, isPrivateCluster bool
+	var excludeMasterFromStandardLB, provisionJumpbox bool
 	var maxLoadBalancerCount int
 	var useInstanceMetadata *bool
 	if kubernetesConfig != nil {
@@ -62,9 +65,6 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 		useInstanceMetadata = kubernetesConfig.UseInstanceMetadata
 		excludeMasterFromStandardLB = to.Bool(kubernetesConfig.ExcludeMasterFromStandardLB)
 		maxLoadBalancerCount = kubernetesConfig.MaximumLoadBalancerRuleCount
-		if kubernetesConfig.PrivateCluster != nil {
-			isPrivateCluster = to.Bool(kubernetesConfig.PrivateCluster.Enabled)
-		}
 		provisionJumpbox = kubernetesConfig.PrivateJumpboxProvision()
 	}
 	isHostedMaster := cs.Properties.IsHostedMasterProfile()
@@ -95,26 +95,39 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 			"[resourceGroup().location]",
 			"[parameters('location')]",
 		},
-		"location":                  "[variables('locations')[mod(add(2,length(parameters('location'))),add(1,length(parameters('location'))))]]",
-		"masterAvailabilitySet":     "[concat('master-availabilityset-', parameters('nameSuffix'))]",
-		"resourceGroup":             "[resourceGroup().name]",
-		"truncatedResourceGroup":    "[take(replace(replace(resourceGroup().name, '(', '-'), ')', '-'), 63)]",
-		"labelResourceGroup":        "[if(or(or(endsWith(variables('truncatedResourceGroup'), '-'), endsWith(variables('truncatedResourceGroup'), '_')), endsWith(variables('truncatedResourceGroup'), '.')), concat(take(variables('truncatedResourceGroup'), 62), 'z'), variables('truncatedResourceGroup'))]",
-		"routeTableID":              "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]",
-		"sshNatPorts":               []int{22, 2201, 2202, 2203, 2204},
-		"sshKeyPath":                "[concat('/home/',parameters('linuxAdminUsername'),'/.ssh/authorized_keys')]",
-		"provisionScript":           GetKubernetesB64Provision(),
-		"provisionSource":           GetKubernetesB64ProvisionSource(),
-		"healthMonitorScript":       GetKubernetesB64HealthMonitorScript(),
-		"provisionInstalls":         GetKubernetesB64Installs(),
-		"provisionConfigs":          GetKubernetesB64Configs(),
-		"systemConf":                GetB64systemConf(),
-		"mountetcdScript":           GetKubernetesB64Mountetcd(),
-		"customSearchDomainsScript": GetKubernetesB64CustomSearchDomainsScript(),
-		"sshdConfig":                GetB64sshdConfig(),
+		"location":               "[variables('locations')[mod(add(2,length(parameters('location'))),add(1,length(parameters('location'))))]]",
+		"masterAvailabilitySet":  "[concat('master-availabilityset-', parameters('nameSuffix'))]",
+		"resourceGroup":          "[resourceGroup().name]",
+		"truncatedResourceGroup": "[take(replace(replace(resourceGroup().name, '(', '-'), ')', '-'), 63)]",
+		"labelResourceGroup":     "[if(or(or(endsWith(variables('truncatedResourceGroup'), '-'), endsWith(variables('truncatedResourceGroup'), '_')), endsWith(variables('truncatedResourceGroup'), '.')), concat(take(variables('truncatedResourceGroup'), 62), 'z'), variables('truncatedResourceGroup'))]",
+		"routeTableID":           "[resourceId('Microsoft.Network/routeTables', variables('routeTableName'))]",
+		"sshNatPorts":            []int{22, 2201, 2202, 2203, 2204},
+		"sshKeyPath":             "[concat('/home/',parameters('linuxAdminUsername'),'/.ssh/authorized_keys')]",
+		"cloudInitFiles": map[string]interface{}{
+			"provisionScript":                  getBase64EncodedGzippedCustomScript(kubernetesCSEMainScript),
+			"provisionSource":                  getBase64EncodedGzippedCustomScript(kubernetesCSEHelpersScript),
+			"provisionInstalls":                getBase64EncodedGzippedCustomScript(kubernetesCSEInstall),
+			"provisionConfigs":                 getBase64EncodedGzippedCustomScript(kubernetesCSEConfig),
+			"provisionCIS":                     getBase64EncodedGzippedCustomScript(kubernetesCISScript),
+			"sshdConfig":                       getBase64EncodedGzippedCustomScript(sshdConfig),
+			"systemConf":                       getBase64EncodedGzippedCustomScript(systemConf),
+			"healthMonitorScript":              getBase64EncodedGzippedCustomScript(kubernetesHealthMonitorScript),
+			"customSearchDomainsScript":        getBase64EncodedGzippedCustomScript(kubernetesCustomSearchDomainsScript),
+			"generateProxyCertsScript":         getBase64EncodedGzippedCustomScript(kubernetesMasterGenerateProxyCertsScript),
+			"mountEtcdScript":                  getBase64EncodedGzippedCustomScript(kubernetesMountEtcd),
+			"kubeletSystemdService":            getBase64EncodedGzippedCustomScript(kubeletSystemdService),
+			"kmsSystemdService":                getBase64EncodedGzippedCustomScript(kmsSystemdService),
+			"kubeletMonitorSystemdTimer":       getBase64EncodedGzippedCustomScript(kubernetesKubeletMonitorSystemdTimer),
+			"kubeletMonitorSystemdService":     getBase64EncodedGzippedCustomScript(kubernetesKubeletMonitorSystemdService),
+			"dockerMonitorSystemdTimer":        getBase64EncodedGzippedCustomScript(kubernetesDockerMonitorSystemdTimer),
+			"dockerMonitorSystemdService":      getBase64EncodedGzippedCustomScript(kubernetesDockerMonitorSystemdService),
+			"aptPreferences":                   getBase64EncodedGzippedCustomScript(aptPreferences),
+			"dockerClearMountPropagationFlags": getBase64EncodedGzippedCustomScript(dockerClearMountPropagationFlags),
+			"etcdSystemdService":               getBase64EncodedGzippedCustomScript(etcdSystemdService),
+			"etcIssue":                         getBase64EncodedGzippedCustomScript(etcIssue),
+		},
 		"provisionScriptParametersCommon": fmt.Sprintf("[concat('ADMINUSER=',parameters('linuxAdminUsername'),' ETCD_DOWNLOAD_URL=',parameters('etcdDownloadURLBase'),' ETCD_VERSION=',parameters('etcdVersion'),' CONTAINERD_VERSION=',parameters('containerdVersion'),' MOBY_VERSION=',parameters('mobyVersion'),' TENANT_ID=',variables('tenantID'),' KUBERNETES_VERSION=%s HYPERKUBE_URL=',parameters('kubernetesHyperkubeSpec'),' APISERVER_PUBLIC_KEY=',parameters('apiServerCertificate'),' SUBSCRIPTION_ID=',variables('subscriptionId'),' RESOURCE_GROUP=',variables('resourceGroup'),' LOCATION=',variables('location'),' VM_TYPE=',variables('vmType'),' SUBNET=',variables('subnetName'),' NETWORK_SECURITY_GROUP=',variables('nsgName'),' VIRTUAL_NETWORK=',variables('virtualNetworkName'),' VIRTUAL_NETWORK_RESOURCE_GROUP=',variables('virtualNetworkResourceGroupName'),' ROUTE_TABLE=',variables('routeTableName'),' PRIMARY_AVAILABILITY_SET=',variables('primaryAvailabilitySetName'),' PRIMARY_SCALE_SET=',variables('primaryScaleSetName'),' SERVICE_PRINCIPAL_CLIENT_ID=',variables('servicePrincipalClientId'),' SERVICE_PRINCIPAL_CLIENT_SECRET=',variables('singleQuote'),variables('servicePrincipalClientSecret'),variables('singleQuote'),' KUBELET_PRIVATE_KEY=',parameters('clientPrivateKey'),' TARGET_ENVIRONMENT=',parameters('targetEnvironment'),' NETWORK_PLUGIN=',parameters('networkPlugin'),' NETWORK_POLICY=',parameters('networkPolicy'),' VNET_CNI_PLUGINS_URL=',parameters('vnetCniLinuxPluginsURL'),' CNI_PLUGINS_URL=',parameters('cniPluginsURL'),' CLOUDPROVIDER_BACKOFF=',toLower(string(parameters('cloudproviderConfig').cloudProviderBackoff)),' CLOUDPROVIDER_BACKOFF_RETRIES=',parameters('cloudproviderConfig').cloudProviderBackoffRetries,' CLOUDPROVIDER_BACKOFF_EXPONENT=',parameters('cloudproviderConfig').cloudProviderBackoffExponent,' CLOUDPROVIDER_BACKOFF_DURATION=',parameters('cloudproviderConfig').cloudProviderBackoffDuration,' CLOUDPROVIDER_BACKOFF_JITTER=',parameters('cloudproviderConfig').cloudProviderBackoffJitter,' CLOUDPROVIDER_RATELIMIT=',toLower(string(parameters('cloudproviderConfig').cloudProviderRatelimit)),' CLOUDPROVIDER_RATELIMIT_QPS=',parameters('cloudproviderConfig').cloudProviderRatelimitQPS,' CLOUDPROVIDER_RATELIMIT_BUCKET=',parameters('cloudproviderConfig').cloudProviderRatelimitBucket,' USE_MANAGED_IDENTITY_EXTENSION=',variables('useManagedIdentityExtension'),' USER_ASSIGNED_IDENTITY_ID=',variables('userAssignedClientID'),' USE_INSTANCE_METADATA=',variables('useInstanceMetadata'),' LOAD_BALANCER_SKU=',variables('loadBalancerSku'),' EXCLUDE_MASTER_FROM_STANDARD_LB=',variables('excludeMasterFromStandardLB'),' MAXIMUM_LOADBALANCER_RULE_COUNT=',variables('maximumLoadBalancerRuleCount'),' CONTAINER_RUNTIME=',parameters('containerRuntime'),' CONTAINERD_DOWNLOAD_URL_BASE=',parameters('containerdDownloadURLBase'),' POD_INFRA_CONTAINER_SPEC=',parameters('kubernetesPodInfraContainerSpec'),' KMS_PROVIDER_VAULT_NAME=',variables('clusterKeyVaultName'),' IS_HOSTED_MASTER=%t',' PRIVATE_AZURE_REGISTRY_SERVER=',parameters('privateAzureRegistryServer'),' AUTHENTICATION_METHOD=',variables('customCloudAuthenticationMethod'),' IDENTITY_SYSTEM=',variables('customCloudIdentifySystem'))]",
 			orchProfile.OrchestratorVersion, isHostedMaster),
-		"generateProxyCertsScript":                  GetKubernetesB64GenerateProxyCerts(),
 		"orchestratorNameVersionTag":                fmt.Sprintf("%s:%s", orchProfile.OrchestratorType, orchProfile.OrchestratorVersion),
 		"subnetNameResourceSegmentIndex":            10,
 		"vnetNameResourceSegmentIndex":              8,
@@ -137,8 +150,19 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 		masterVars["apiVersionStorage"] = "2017-10-01"
 		masterVars["apiVersionNetwork"] = "2017-10-01"
 		masterVars["apiVersionKeyVault"] = "2016-10-01"
-		masterVars["environmentJSON"] = cs.Properties.GetCustomEnvironmentJSON(false)
-		masterVars["provisionConfigsCustomCloud"] = GetKubernetesB64ConfigsCustomCloud()
+
+		environmentJSON, err := cs.Properties.GetCustomEnvironmentJSON(false)
+		if err != nil {
+			return masterVars, err
+		}
+		masterVars["environmentJSON"] = environmentJSON
+		masterVars["provisionConfigsCustomCloud"] = getBase64EncodedGzippedCustomScript(kubernetesCSECustomCloud)
+	}
+
+	if kubernetesConfig != nil {
+		if kubernetesConfig.NetworkPlugin == NetworkPluginCilium {
+			masterVars["systemdBPFMount"] = getBase64EncodedGzippedCustomScript(systemdBPFMount)
+		}
 	}
 
 	masterVars["customCloudAuthenticationMethod"] = cs.Properties.GetCustomCloudAuthenticationMethod()
@@ -324,7 +348,7 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 		masterVars["kubernetesAPIServerIP"] = "[parameters('kubernetesEndpoint')]"
 		masterVars["agentNamePrefix"] = "[concat(parameters('orchestratorName'), '-agentpool-', parameters('nameSuffix'), '-')]"
 	} else {
-		if isPrivateCluster {
+		if cs.Properties.OrchestratorProfile.IsPrivateCluster() {
 			masterVars["kubeconfigServer"] = "[concat('https://', variables('kubernetesAPIServerIP'), ':443')]"
 			if provisionJumpbox {
 				masterVars["jumpboxOSDiskName"] = "[concat(parameters('jumpboxVMName'), '-osdisk')]"
@@ -440,7 +464,7 @@ func getK8sMasterVars(cs *api.ContainerService) map[string]interface{} {
 		masterVars["clusterKeyVaultName"] = ""
 	}
 
-	return masterVars
+	return masterVars, nil
 }
 
 func getK8sAgentVars(cs *api.ContainerService, profile *api.AgentPoolProfile) map[string]interface{} {

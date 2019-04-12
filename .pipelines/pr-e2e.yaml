@@ -17,7 +17,7 @@ pr:
 resources:
   containers:
   - container: dev1
-    image: quay.io/deis/go-dev:v1.19.2
+    image: quay.io/deis/go-dev:v1.21.0
 
 jobs:
 - job: unit_tests
@@ -68,6 +68,18 @@ jobs:
   parameters:
     name: 'default_linux_e2e'
     apimodel: 'examples/kubernetes.json'
+
+- template: e2e-job-template.yaml
+  parameters:
+    name: 'ubuntu_18_04_linux_e2e'
+    apimodel: 'examples/ubuntu-1804/kubernetes.json'
+
+- template: e2e-job-template.yaml
+  parameters:
+    name: 'coreos_1_14_e2e'
+    k8sRelease: '1.14'
+    apimodel: 'examples/e2e-tests/kubernetes/coreos/coreos.json'
+    createVNET: true
 
 - template: e2e-job-template.yaml
   parameters:

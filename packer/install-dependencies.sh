@@ -1,6 +1,7 @@
 #!/bin/bash
 source /home/packer/provision_installs.sh
 source /home/packer/provision_source.sh
+source /home/packer/cis.sh
 
 RELEASE_NOTES_FILEPATH=/var/log/azure/golden-image-install.complete
 
@@ -10,15 +11,6 @@ cat /proc/version | tee -a ${RELEASE_NOTES_FILEPATH}
 
 echo ""
 echo "Components downloaded in this VHD build (some of the below components might get deleted during cluster provisioning if they are not needed):" >> ${RELEASE_NOTES_FILEPATH}
-
-if [[ ${UBUNTU_RELEASE} == "18.04" ]]; then
-  overrideNetworkConfig
-fi
-
-ETCD_VERSION="3.2.25"
-ETCD_DOWNLOAD_URL="https://acs-mirror.azureedge.net/github-coreos"
-installEtcd
-echo "  - etcd v${ETCD_VERSION}" >> ${RELEASE_NOTES_FILEPATH}
 
 installDeps
 cat << EOF >> ${RELEASE_NOTES_FILEPATH}
@@ -46,6 +38,15 @@ cat << EOF >> ${RELEASE_NOTES_FILEPATH}
   - xz-utils
   - zip
 EOF
+
+if [[ ${UBUNTU_RELEASE} == "18.04" ]]; then
+  overrideNetworkConfig
+fi
+
+ETCD_VERSION="3.2.25"
+ETCD_DOWNLOAD_URL="https://acs-mirror.azureedge.net/github-coreos"
+installEtcd
+echo "  - etcd v${ETCD_VERSION}" >> ${RELEASE_NOTES_FILEPATH}
 
 MOBY_VERSION="3.0.4"
 installMoby
@@ -340,6 +341,7 @@ echo "  - busybox" >> ${RELEASE_NOTES_FILEPATH}
 
 # TODO: fetch supported k8s versions from an aks-engine command instead of hardcoding them here
 K8S_VERSIONS="
+1.14.1
 1.14.0
 1.13.5
 1.13.4
@@ -356,7 +358,6 @@ for KUBERNETES_VERSION in ${K8S_VERSIONS}; do
     HYPERKUBE_URL="k8s.gcr.io/hyperkube-amd64:v${KUBERNETES_VERSION}"
     extractHyperkube "docker"
     CONTAINER_IMAGE="k8s.gcr.io/cloud-controller-manager-amd64:v${KUBERNETES_VERSION}"
-    pullContainerImage "docker" ${CONTAINER_IMAGE}
     pullContainerImage "docker" ${CONTAINER_IMAGE}
     echo "  - ${HYPERKUBE_URL}" >> ${RELEASE_NOTES_FILEPATH}
     echo "  - ${CONTAINER_IMAGE}" >> ${RELEASE_NOTES_FILEPATH}
@@ -376,3 +377,5 @@ echo "START_OF_NOTES"
 cat ${RELEASE_NOTES_FILEPATH}
 echo "END_OF_NOTES"
 set -x
+
+applyCIS

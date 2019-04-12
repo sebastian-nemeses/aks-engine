@@ -1,7 +1,11 @@
 #!/bin/bash
 NODE_INDEX=$(hostname | tail -c 2)
 NODE_NAME=$(hostname)
-PRIVATE_IP=$(hostname -I | cut -d' ' -f1)
+if [[ $OS == $COREOS_OS_NAME ]]; then
+    PRIVATE_IP=$(ip a show eth0 | grep -Po 'inet \K[\d.]+')
+else
+    PRIVATE_IP=$(hostname -I | cut -d' ' -f1)
+fi
 ETCD_PEER_URL="https://${PRIVATE_IP}:2380"
 ETCD_CLIENT_URL="https://${PRIVATE_IP}:2379"
 
@@ -190,6 +194,15 @@ configureCNI() {
     # needed for the iptables rules to work on bridges
     retrycmd_if_failure 120 5 25 modprobe br_netfilter || exit $ERR_MODPROBE_FAIL
     echo -n "br_netfilter" > /etc/modules-load.d/br_netfilter.conf
+    configureCNIIPTables
+    if [[ "${NETWORK_PLUGIN}" = "cilium" ]]; then
+        systemctl enable sys-fs-bpf.mount
+        systemctl restart sys-fs-bpf.mount
+        REBOOTREQUIRED=true
+    fi
+}
+
+configureCNIIPTables() {
     if [[ "${NETWORK_PLUGIN}" = "azure" ]]; then
         mv $CNI_BIN_DIR/10-azure.conflist $CNI_CONFIG_DIR/
         chmod 600 $CNI_CONFIG_DIR/10-azure.conflist
@@ -197,11 +210,6 @@ configureCNI() {
           sed -i 's#"mode":"bridge"#"mode":"transparent"#g' $CNI_CONFIG_DIR/10-azure.conflist
         fi
         /sbin/ebtables -t nat --list
-    fi
-    if [[ "${NETWORK_PLUGIN}" = "cilium" ]]; then
-        systemctl enable sys-fs-bpf.mount
-        systemctl restart sys-fs-bpf.mount
-        REBOOTREQUIRED=true
     fi
 }
 
@@ -253,7 +261,9 @@ ensureDocker() {
     echo "ExecStartPost=/sbin/iptables -P FORWARD ACCEPT" >> $DOCKER_SERVICE_EXEC_START_FILE
     usermod -aG docker ${ADMINUSER}
     DOCKER_MOUNT_FLAGS_SYSTEMD_FILE=/etc/systemd/system/docker.service.d/clear_mount_propagation_flags.conf
-    wait_for_file 1200 1 $DOCKER_MOUNT_FLAGS_SYSTEMD_FILE || exit $ERR_FILE_WATCH_TIMEOUT
+    if [[ $OS != $COREOS_OS_NAME ]]; then
+        wait_for_file 1200 1 $DOCKER_MOUNT_FLAGS_SYSTEMD_FILE || exit $ERR_FILE_WATCH_TIMEOUT
+    fi
     DOCKER_JSON_FILE=/etc/docker/daemon.json
     wait_for_file 1200 1 $DOCKER_JSON_FILE || exit $ERR_FILE_WATCH_TIMEOUT
     systemctlEnableAndStart docker
