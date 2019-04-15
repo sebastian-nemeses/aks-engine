@@ -229,9 +229,9 @@ func (a *Properties) ValidateOrchestratorProfile(isUpdate bool) error {
 							minVersion.String(), version)
 					}
 
-					if !o.KubernetesConfig.IsRBACEnabled() {
-						return errors.New("enableAggregatedAPIs requires the enableRbac feature as a prerequisite")
-					}
+					//if !o.KubernetesConfig.IsRBACEnabled() {
+					//	return errors.New("enableAggregatedAPIs requires the enableRbac feature as a prerequisite")
+					//}
 				}
 
 				if to.Bool(o.KubernetesConfig.EnableDataEncryptionAtRest) {
